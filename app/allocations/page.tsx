@@ -179,11 +179,17 @@ export default function AllocationsPage() {
   const projectedProjectTotal = currentProjectTotal + formData.allocation_percentage;
   const projectOverallocated = projectedProjectTotal > 100;
 
-  const { count: overallocationCount } = useMemo(
+  const { count: overallocationCount, memberIds, projectIds } = useMemo(
     () => countOverallocations(allocations, members, projects),
     [allocations, members, projects]
   );
   const hasOverallocations = overallocationCount > 0;
+  const overallocatedMemberNames = members
+    .filter((m) => memberIds.has(m.id))
+    .map((m) => m.name);
+  const overallocatedProjectNames = projects
+    .filter((p) => projectIds.has(p.id))
+    .map((p) => p.name);
 
   const timelineDateRange = useMemo(
     () => getDateRange(dateRangeMode, allocations),
@@ -472,9 +478,22 @@ export default function AllocationsPage() {
             <div className="flex-1">
               <p className="font-medium">Overallocation detected</p>
               <p className="mt-1">
-                {overallocationCount} member or project
-                {overallocationCount === 1 ? "" : "s"} exceed
-                {overallocationCount === 1 ? "s" : ""} 100% allocation.
+                {overallocatedMemberNames.length > 0 && (
+                  <>
+                    Member{overallocatedMemberNames.length === 1 ? "" : "s"}{" "}
+                    <strong>{overallocatedMemberNames.join(", ")}</strong>{" "}
+                    {overallocatedMemberNames.length === 1 ? "is" : "are"} allocated more than 100% in total.
+                  </>
+                )}
+                {overallocatedMemberNames.length > 0 &&
+                  overallocatedProjectNames.length > 0 && <span className="block mt-1" />}
+                {overallocatedProjectNames.length > 0 && (
+                  <>
+                    Project{overallocatedProjectNames.length === 1 ? "" : "s"}{" "}
+                    <strong>{overallocatedProjectNames.join(", ")}</strong>{" "}
+                    {overallocatedProjectNames.length === 1 ? "has" : "have"} more than 100% total allocation.
+                  </>
+                )}
               </p>
             </div>
             <Link

@@ -46,11 +46,17 @@ function computeOverallocatedMembers(members: Member[], allocations: AllocationW
     }));
 }
 
-function computeOverallocationCount(
+interface OverallocationSummary {
+  count: number;
+  memberNames: string[];
+  projectNames: string[];
+}
+
+function computeOverallocationSummary(
   members: Member[],
   projects: Project[],
   allocations: AllocationWithDetails[]
-) {
+): OverallocationSummary {
   const memberTotals = new Map<string, number>();
   const projectTotals = new Map<string, number>();
 
@@ -65,14 +71,18 @@ function computeOverallocationCount(
     );
   });
 
-  const overallocatedMembers = members.filter(
-    (member) => (memberTotals.get(member.id) ?? 0) > 100
-  );
-  const overallocatedProjects = projects.filter(
-    (project) => (projectTotals.get(project.id) ?? 0) > 100
-  );
+  const memberNames = members
+    .filter((member) => (memberTotals.get(member.id) ?? 0) > 100)
+    .map((member) => member.name);
+  const projectNames = projects
+    .filter((project) => (projectTotals.get(project.id) ?? 0) > 100)
+    .map((project) => project.name);
 
-  return overallocatedMembers.length + overallocatedProjects.length;
+  return {
+    count: memberNames.length + projectNames.length,
+    memberNames,
+    projectNames,
+  };
 }
 
 interface AllocationRow extends Allocation {
@@ -172,8 +182,8 @@ export default async function DashboardPage() {
   const recentAllocations = allocationsWithDetails.slice(0, 10);
   const membersPerProject = computeMembersPerProject(projects, allocationsWithDetails);
   const overallocatedMembers = computeOverallocatedMembers(members, allocationsWithDetails);
-  const overallocationCount = computeOverallocationCount(members, projects, allocationsWithDetails);
-  const hasOverallocations = overallocationCount > 0;
+  const overallocationSummary = computeOverallocationSummary(members, projects, allocationsWithDetails);
+  const hasOverallocations = overallocationSummary.count > 0;
   const projectStatusBreakdown = computeProjectStatusBreakdown(projects);
   const memberWorkload = computeMemberWorkload(members, allocationsWithDetails);
   const hasMoreMembers = members.filter((m) => {
@@ -204,9 +214,26 @@ export default async function DashboardPage() {
             <div className="flex-1">
               <p className="font-medium">Overallocation detected</p>
               <p className="mt-1">
-                {overallocationCount} member or project
-                {overallocationCount === 1 ? "" : "s"} exceed
-                {overallocationCount === 1 ? "s" : ""} 100% allocation.
+                {overallocationSummary.memberNames.length > 0 && (
+                  <>
+                    Member{overallocationSummary.memberNames.length === 1 ? "" : "s"}{" "}
+                    <strong>
+                      {overallocationSummary.memberNames.join(", ")}
+                    </strong>{" "}
+                    {overallocationSummary.memberNames.length === 1 ? "is" : "are"} allocated more than 100% in total.
+                  </>
+                )}
+                {overallocationSummary.memberNames.length > 0 &&
+                  overallocationSummary.projectNames.length > 0 && <span className="block mt-1" />}
+                {overallocationSummary.projectNames.length > 0 && (
+                  <>
+                    Project{overallocationSummary.projectNames.length === 1 ? "" : "s"}{" "}
+                    <strong>
+                      {overallocationSummary.projectNames.join(", ")}
+                    </strong>{" "}
+                    {overallocationSummary.projectNames.length === 1 ? "has" : "have"} more than 100% total allocation.
+                  </>
+                )}
               </p>
             </div>
             <Link
@@ -269,7 +296,7 @@ export default async function DashboardPage() {
                 </div>
                 {hasOverallocations ? (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300">
-                    {overallocationCount}
+                    {overallocationSummary.count}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-300">
@@ -279,7 +306,7 @@ export default async function DashboardPage() {
                 )}
               </div>
               <div className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mt-2 tabular-nums">
-                {overallocationCount}
+                {overallocationSummary.count}
               </div>
             </CardContent>
           </Card>
