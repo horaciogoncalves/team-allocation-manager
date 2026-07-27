@@ -24,7 +24,6 @@ function computeMembersPerProject(projects: Project[], allocations: AllocationWi
       project,
       memberCount: uniqueMemberIds.size,
       totalAllocation,
-      isOverallocated: totalAllocation > 100,
     };
   });
 }
@@ -54,34 +53,25 @@ interface OverallocationSummary {
 
 function computeOverallocationSummary(
   members: Member[],
-  projects: Project[],
   allocations: AllocationWithDetails[]
 ): OverallocationSummary {
   const memberTotals = new Map<string, number>();
-  const projectTotals = new Map<string, number>();
 
   allocations.forEach((allocation) => {
     memberTotals.set(
       allocation.member_id,
       (memberTotals.get(allocation.member_id) ?? 0) + allocation.allocation_percentage
     );
-    projectTotals.set(
-      allocation.project_id,
-      (projectTotals.get(allocation.project_id) ?? 0) + allocation.allocation_percentage
-    );
   });
 
   const memberNames = members
     .filter((member) => (memberTotals.get(member.id) ?? 0) > 100)
     .map((member) => member.name);
-  const projectNames = projects
-    .filter((project) => (projectTotals.get(project.id) ?? 0) > 100)
-    .map((project) => project.name);
 
   return {
-    count: memberNames.length + projectNames.length,
+    count: memberNames.length,
     memberNames,
-    projectNames,
+    projectNames: [],
   };
 }
 
@@ -182,7 +172,7 @@ export default async function DashboardPage() {
   const recentAllocations = allocationsWithDetails.slice(0, 10);
   const membersPerProject = computeMembersPerProject(projects, allocationsWithDetails);
   const overallocatedMembers = computeOverallocatedMembers(members, allocationsWithDetails);
-  const overallocationSummary = computeOverallocationSummary(members, projects, allocationsWithDetails);
+  const overallocationSummary = computeOverallocationSummary(members, allocationsWithDetails);
   const hasOverallocations = overallocationSummary.count > 0;
   const projectStatusBreakdown = computeProjectStatusBreakdown(projects);
   const memberWorkload = computeMemberWorkload(members, allocationsWithDetails);
@@ -214,26 +204,9 @@ export default async function DashboardPage() {
             <div className="flex-1">
               <p className="font-medium">Overallocation detected</p>
               <p className="mt-1">
-                {overallocationSummary.memberNames.length > 0 && (
-                  <>
-                    Member{overallocationSummary.memberNames.length === 1 ? "" : "s"}{" "}
-                    <strong>
-                      {overallocationSummary.memberNames.join(", ")}
-                    </strong>{" "}
-                    {overallocationSummary.memberNames.length === 1 ? "is" : "are"} allocated more than 100% in total.
-                  </>
-                )}
-                {overallocationSummary.memberNames.length > 0 &&
-                  overallocationSummary.projectNames.length > 0 && <span className="block mt-1" />}
-                {overallocationSummary.projectNames.length > 0 && (
-                  <>
-                    Project{overallocationSummary.projectNames.length === 1 ? "" : "s"}{" "}
-                    <strong>
-                      {overallocationSummary.projectNames.join(", ")}
-                    </strong>{" "}
-                    {overallocationSummary.projectNames.length === 1 ? "has" : "have"} more than 100% total allocation.
-                  </>
-                )}
+                Member{overallocationSummary.memberNames.length === 1 ? "" : "s"}{" "}
+                <strong>{overallocationSummary.memberNames.join(", ")}</strong>{" "}
+                {overallocationSummary.memberNames.length === 1 ? "is" : "are"} allocated more than 100% across projects.
               </p>
             </div>
             <Link
@@ -381,7 +354,7 @@ export default async function DashboardPage() {
               />
             ) : (
               <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                {membersPerProject.map(({ project, memberCount, totalAllocation, isOverallocated }) => (
+                {membersPerProject.map(({ project, memberCount, totalAllocation }) => (
                   <li key={project.id}>
                     <Link
                       href="/projects"
@@ -396,21 +369,9 @@ export default async function DashboardPage() {
                             {memberCount} member{memberCount === 1 ? "" : "s"}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {isOverallocated && (
-                            <span
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300"
-                              aria-label="Project is overallocated"
-                              title="Project total allocation exceeds 100%"
-                            >
-                              <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
-                              Overallocated
-                            </span>
-                          )}
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-300 tabular-nums">
-                            {totalAllocation}% allocated
-                          </span>
-                        </div>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-300 tabular-nums">
+                          {totalAllocation}% allocated
+                        </span>
                       </div>
                     </Link>
                   </li>

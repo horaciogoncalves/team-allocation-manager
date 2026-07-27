@@ -43,36 +43,23 @@ function formatDate(date: string | null | undefined): string {
   return new Date(date).toLocaleDateString();
 }
 
-function countOverallocations(
-  allocations: AllocationWithDetails[],
-  members: Member[],
-  projects: Project[]
-) {
+function countOverallocations(allocations: AllocationWithDetails[], members: Member[]) {
   const memberTotals = new Map<string, number>();
-  const projectTotals = new Map<string, number>();
 
   allocations.forEach((allocation) => {
     memberTotals.set(
       allocation.member_id,
       (memberTotals.get(allocation.member_id) ?? 0) + allocation.allocation_percentage
     );
-    projectTotals.set(
-      allocation.project_id,
-      (projectTotals.get(allocation.project_id) ?? 0) + allocation.allocation_percentage
-    );
   });
 
   const overallocatedMembers = members.filter(
     (member) => (memberTotals.get(member.id) ?? 0) > 100
   );
-  const overallocatedProjects = projects.filter(
-    (project) => (projectTotals.get(project.id) ?? 0) > 100
-  );
 
   return {
-    count: overallocatedMembers.length + overallocatedProjects.length,
+    count: overallocatedMembers.length,
     memberIds: new Set(overallocatedMembers.map((m) => m.id)),
-    projectIds: new Set(overallocatedProjects.map((p) => p.id)),
   };
 }
 
@@ -148,17 +135,6 @@ export default function AllocationsPage() {
     return totals;
   }, [allocations]);
 
-  const projectTotals = useMemo(() => {
-    const totals = new Map<string, number>();
-    allocations.forEach((allocation) => {
-      totals.set(
-        allocation.project_id,
-        (totals.get(allocation.project_id) ?? 0) + allocation.allocation_percentage
-      );
-    });
-    return totals;
-  }, [allocations]);
-
   const currentMemberTotal = useMemo(() => {
     if (!formData.member_id) return 0;
     return allocations
@@ -169,27 +145,14 @@ export default function AllocationsPage() {
   const projectedMemberTotal = currentMemberTotal + formData.allocation_percentage;
   const memberOverallocated = projectedMemberTotal > 100;
 
-  const currentProjectTotal = useMemo(() => {
-    if (!formData.project_id) return 0;
-    return allocations
-      .filter((a) => a.project_id === formData.project_id && a.id !== editingId)
-      .reduce((sum, a) => sum + a.allocation_percentage, 0);
-  }, [allocations, formData.project_id, editingId]);
-
-  const projectedProjectTotal = currentProjectTotal + formData.allocation_percentage;
-  const projectOverallocated = projectedProjectTotal > 100;
-
-  const { count: overallocationCount, memberIds, projectIds } = useMemo(
-    () => countOverallocations(allocations, members, projects),
-    [allocations, members, projects]
+  const { count: overallocationCount, memberIds } = useMemo(
+    () => countOverallocations(allocations, members),
+    [allocations, members]
   );
   const hasOverallocations = overallocationCount > 0;
   const overallocatedMemberNames = members
     .filter((m) => memberIds.has(m.id))
     .map((m) => m.name);
-  const overallocatedProjectNames = projects
-    .filter((p) => projectIds.has(p.id))
-    .map((p) => p.name);
 
   const timelineDateRange = useMemo(
     () => getDateRange(dateRangeMode, allocations),
@@ -363,10 +326,7 @@ export default function AllocationsPage() {
   const noResults = !loading && allocations.length > 0 && filteredAllocations.length === 0;
 
   function isAllocationOverallocated(allocation: AllocationWithDetails): boolean {
-    return (
-      (memberTotals.get(allocation.member_id) ?? 0) > 100 ||
-      (projectTotals.get(allocation.project_id) ?? 0) > 100
-    );
+    return (memberTotals.get(allocation.member_id) ?? 0) > 100;
   }
 
   const allocationColumns: ResponsiveTableColumn<AllocationWithDetails, AllocationsSortKey>[] = [
@@ -478,22 +438,9 @@ export default function AllocationsPage() {
             <div className="flex-1">
               <p className="font-medium">Overallocation detected</p>
               <p className="mt-1">
-                {overallocatedMemberNames.length > 0 && (
-                  <>
-                    Member{overallocatedMemberNames.length === 1 ? "" : "s"}{" "}
-                    <strong>{overallocatedMemberNames.join(", ")}</strong>{" "}
-                    {overallocatedMemberNames.length === 1 ? "is" : "are"} allocated more than 100% in total.
-                  </>
-                )}
-                {overallocatedMemberNames.length > 0 &&
-                  overallocatedProjectNames.length > 0 && <span className="block mt-1" />}
-                {overallocatedProjectNames.length > 0 && (
-                  <>
-                    Project{overallocatedProjectNames.length === 1 ? "" : "s"}{" "}
-                    <strong>{overallocatedProjectNames.join(", ")}</strong>{" "}
-                    {overallocatedProjectNames.length === 1 ? "has" : "have"} more than 100% total allocation.
-                  </>
-                )}
+                Member{overallocatedMemberNames.length === 1 ? "" : "s"}{" "}
+                <strong>{overallocatedMemberNames.join(", ")}</strong>{" "}
+                {overallocatedMemberNames.length === 1 ? "is" : "are"} allocated more than 100% across projects.
               </p>
             </div>
             <Link
@@ -550,27 +497,6 @@ export default function AllocationsPage() {
                     {memberOverallocated && (
                       <span className="block mt-1 font-medium">
                         Warning: this would exceed 100% allocation for this member.
-                      </span>
-                    )}
-                  </div>
-                )}
-                {formData.project_id && (
-                  <div
-                    className={`rounded-lg p-3 text-sm border ${
-                      projectOverallocated
-                        ? "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/30 dark:border-red-900/50 dark:text-red-300"
-                        : "bg-zinc-50 border-zinc-200 text-zinc-700 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-300"
-                    }`}
-                    role={projectOverallocated ? "alert" : undefined}
-                  >
-                    <span className="font-medium">Project allocation:</span>{" "}
-                    {currentProjectTotal}% → would become{" "}
-                    <span className={projectOverallocated ? "font-bold" : ""}>
-                      {projectedProjectTotal}%
-                    </span>
-                    {projectOverallocated && (
-                      <span className="block mt-1 font-medium">
-                        Warning: this would exceed 100% allocation for this project.
                       </span>
                     )}
                   </div>
