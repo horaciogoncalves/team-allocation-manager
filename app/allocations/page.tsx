@@ -23,6 +23,7 @@ import {
   updateAllocation,
 } from "@/lib/api";
 import { getDateRange } from "@/lib/date-utils";
+import { allocationsOverlap } from "@/lib/overlap";
 import type { AllocationWithDetails, AllocationFormData, Member, Project } from "@/lib/types";
 
 const initialFormData: AllocationFormData = {
@@ -135,15 +136,58 @@ export default function AllocationsPage() {
     return totals;
   }, [allocations]);
 
-  const currentMemberTotal = useMemo(() => {
-    if (!formData.member_id) return 0;
-    return allocations
-      .filter((a) => a.member_id === formData.member_id && a.id !== editingId)
-      .reduce((sum, a) => sum + a.allocation_percentage, 0);
-  }, [allocations, formData.member_id, editingId]);
+  const memberAllocationSummary = useMemo(() => {
+    if (!formData.member_id) {
+      return {
+        overlappingTotal: 0,
+        projectedTotal: 0,
+        memberOverallocated: false,
+      };
+    }
 
-  const projectedMemberTotal = currentMemberTotal + formData.allocation_percentage;
-  const memberOverallocated = projectedMemberTotal > 100;
+    const newRange = {
+      start_date: formData.start_date || null,
+      end_date: formData.end_date || null,
+    };
+
+    const overlappingTotal = allocations
+      .filter(
+        (a) =>
+          a.member_id === formData.member_id &&
+          a.id !== editingId &&
+          allocationsOverlap(
+            { start_date: a.start_date, end_date: a.end_date },
+            newRange
+          )
+      )
+      .reduce((sum, a) => sum + a.allocation_percentage, 0);
+
+    const projectedTotal = overlappingTotal + formData.allocation_percentage;
+
+    return {
+      overlappingTotal,
+      projectedTotal,
+      memberOverallocated: projectedTotal > 100,
+    };
+  }, [
+    allocations,
+    formData.member_id,
+    formData.start_date,
+    formData.end_date,
+    formData.allocation_percentage,
+    editingId,
+  ]);
+
+  const { overlappingTotal, projectedTotal, memberOverallocated } =
+    memberAllocationSummary;
+
+  const conflictError = useMemo(() => {
+    if (editingId || !formData.member_id || !memberOverallocated) {
+      return null;
+    }
+    const member = members.find((m) => m.id === formData.member_id);
+    return `Cannot create allocation: ${member?.name ?? "This member"} would be allocated ${projectedTotal}% across overlapping allocations (maximum 100%).`;
+  }, [editingId, formData.member_id, memberOverallocated, members, projectedTotal]);
 
   const { count: overallocationCount, memberIds } = useMemo(
     () => countOverallocations(allocations, members),
@@ -187,6 +231,11 @@ export default function AllocationsPage() {
       errors.end_date = "End date must be on or after start date.";
     }
     setFormErrors(errors);
+
+    if (!editingId && conflictError) {
+      return false;
+    }
+
     return Object.keys(errors).length === 0;
   }
 
@@ -490,13 +539,13 @@ export default function AllocationsPage() {
                     role={memberOverallocated ? "alert" : undefined}
                   >
                     <span className="font-medium">Member allocation:</span>{" "}
-                    {currentMemberTotal}% → would become{" "}
+                    {overlappingTotal}% overlapping → would become{" "}
                     <span className={memberOverallocated ? "font-bold" : ""}>
-                      {projectedMemberTotal}%
+                      {projectedTotal}%
                     </span>
-                    {memberOverallocated && (
+                    {conflictError && (
                       <span className="block mt-1 font-medium">
-                        Warning: this would exceed 100% allocation for this member.
+                        {conflictError}
                       </span>
                     )}
                   </div>
@@ -538,7 +587,11 @@ export default function AllocationsPage() {
               />
             </div>
             <div className="flex gap-2">
-              <Button type="submit" isLoading={isSubmitting}>
+              <Button
+                type="submit"
+                isLoading={isSubmitting}
+                disabled={!editingId && !!conflictError}
+              >
                 {editingId ? "Update Allocation" : "Add Allocation"}
               </Button>
               {editingId && (

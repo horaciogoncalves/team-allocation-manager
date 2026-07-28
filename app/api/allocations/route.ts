@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
-import type { Allocation, AllocationInput, AllocationWithDetails } from "@/lib/types";
+import { allocationsOverlap } from "@/lib/overlap";
+import type { Allocation, AllocationInput, AllocationWithDetails, Member } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,52 @@ export async function POST(request: Request) {
     const validationError = validateAllocation(body);
     if (validationError) {
       return Response.json({ error: validationError }, { status: 400 });
+    }
+
+    const existingRows = await query<Allocation>(
+      "SELECT * FROM allocations WHERE member_id = $1",
+      [body.member_id]
+    );
+
+    const newAllocationRange = {
+      start_date: body.start_date || null,
+      end_date: body.end_date || null,
+    };
+
+    const overlapTotal = existingRows
+      .filter((existing) =>
+        allocationsOverlap(
+          {
+            start_date: existing.start_date,
+            end_date: existing.end_date,
+          },
+          newAllocationRange
+        )
+      )
+      .reduce((sum, existing) => sum + existing.allocation_percentage, 0);
+
+    const newPercentage = Math.round(body.allocation_percentage);
+    const projectedTotal = overlapTotal + newPercentage;
+
+    if (projectedTotal > 100) {
+      const memberRows = await query<Pick<Member, "id" | "name">>(
+        "SELECT id, name FROM members WHERE id = $1",
+        [body.member_id]
+      );
+      const memberName = memberRows[0]?.name ?? body.member_id;
+
+      return Response.json(
+        {
+          error: `${memberName} would be allocated ${projectedTotal}% across overlapping allocations (maximum 100%).`,
+          code: "OVERALLOCATION_CONFLICT",
+          details: {
+            member_id: body.member_id,
+            member_name: memberName,
+            total_percentage: projectedTotal,
+          },
+        },
+        { status: 409 }
+      );
     }
 
     const insertRows = await query<{ id: string }>(
