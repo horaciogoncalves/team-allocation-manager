@@ -36,6 +36,22 @@ function computeMargin(stdCst: number | null, billingRate: number | null): numbe
   return Number(margin.toFixed(2));
 }
 
+function parseNumeric(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "number") return value;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function normalizeMember(member: Member): Member {
+  return {
+    ...member,
+    std_cst: parseNumeric(member.std_cst),
+    billing_rate: parseNumeric(member.billing_rate),
+    margin: parseNumeric(member.margin),
+  };
+}
+
 function validateMember(body: MemberInput): string | null {
   if (!body.name || body.name.trim().length === 0) {
     return "Name is required.";
@@ -68,11 +84,11 @@ export async function GET(request: Request) {
         return Response.json({ error: "Member not found." }, { status: 404 });
       }
 
-      return Response.json({ data: rows[0] });
+      return Response.json({ data: normalizeMember(rows[0]) });
     }
 
     const rows = await query<Member>("SELECT * FROM members ORDER BY created_at DESC");
-    return Response.json({ data: rows });
+    return Response.json({ data: rows.map(normalizeMember) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("GET /api/members error:", error);
@@ -121,7 +137,7 @@ export async function POST(request: Request) {
       ]
     );
 
-    return Response.json({ data: rows[0] }, { status: 201 });
+    return Response.json({ data: normalizeMember(rows[0]) }, { status: 201 });
   } catch (error) {
     if (
       typeof error === "object" &&
@@ -229,7 +245,7 @@ export async function PUT(request: Request) {
     if (currentRows.length === 0) {
       return Response.json({ error: "Member not found." }, { status: 404 });
     }
-    const current = currentRows[0];
+    const current = normalizeMember(currentRows[0]);
 
     const margin = computeMargin(
       "std_cst" in b ? stdCst : current.std_cst,
@@ -257,8 +273,7 @@ export async function PUT(request: Request) {
     if (rows.length === 0) {
       return Response.json({ error: "Member not found." }, { status: 404 });
     }
-
-    return Response.json({ data: rows[0] });
+    return Response.json({ data: normalizeMember(rows[0]) });
   } catch (error) {
     if (
       typeof error === "object" &&
