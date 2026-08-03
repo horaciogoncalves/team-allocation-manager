@@ -122,8 +122,17 @@ export async function PUT(request: Request) {
       return Response.json({ error: "Member id is required." }, { status: 400 });
     }
 
-    const stdCst = parseStdCst(b.std_cst);
-    if (stdCst === null && b.std_cst !== undefined && b.std_cst !== null && b.std_cst !== "") {
+    const stdCstRaw =
+      typeof b.std_cst === "string" || typeof b.std_cst === "number" || b.std_cst === null
+        ? b.std_cst
+        : undefined;
+    const stdCst = parseStdCst(stdCstRaw);
+    if (
+      stdCst === null &&
+      stdCstRaw !== undefined &&
+      stdCstRaw !== null &&
+      stdCstRaw !== ""
+    ) {
       return Response.json({ error: "Hourly cost must be a non-negative number." }, { status: 400 });
     }
 
