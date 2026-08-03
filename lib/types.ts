@@ -3,6 +3,7 @@ export interface Member {
   name: string;
   email: string;
   role: string | null;
+  std_cst: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -58,6 +59,7 @@ export type MemberFormData = {
   name: string;
   email: string;
   role: string;
+  std_cst: string;
 };
 
 export type ProjectFormData = {

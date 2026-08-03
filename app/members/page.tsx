@@ -18,9 +18,10 @@ const initialFormData: MemberFormData = {
   name: "",
   email: "",
   role: "",
+  std_cst: "",
 };
 
-type MembersSortKey = "name" | "email" | "role" | "created_at";
+type MembersSortKey = "name" | "email" | "role" | "std_cst" | "created_at";
 
 export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -82,6 +83,15 @@ export default function MembersPage() {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
       errors.email = "Please enter a valid email address.";
     }
+    if (data.std_cst.trim()) {
+      const normalized = data.std_cst.replace(",", ".");
+      const parsed = Number(normalized);
+      if (Number.isNaN(parsed) || parsed < 0) {
+        errors.std_cst = "Please enter a valid non-negative cost.";
+      } else if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+        errors.std_cst = "Use up to 2 decimal places.";
+      }
+    }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -121,6 +131,7 @@ export default function MembersPage() {
       name: member.name,
       email: member.email,
       role: member.role ?? "",
+      std_cst: member.std_cst !== null ? member.std_cst.toFixed(2) : "",
     });
     setEditingId(member.id);
     setFormErrors({});
@@ -202,6 +213,15 @@ export default function MembersPage() {
       sortKey: "role",
     },
     {
+      key: "std_cst",
+      header: "Hourly Cost",
+      cell: (member) =>
+        member.std_cst !== null ? `€ ${member.std_cst.toFixed(2)}` : "—",
+      sortKey: "std_cst",
+      align: "right",
+      className: "tabular-nums",
+    },
+    {
       key: "created_at",
       header: "Created",
       cell: (member) => new Date(member.created_at).toLocaleDateString(),
@@ -243,7 +263,7 @@ export default function MembersPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Input
                 label="Name"
                 value={formData.name}
@@ -266,6 +286,16 @@ export default function MembersPage() {
                 onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 placeholder="e.g. Frontend Developer"
                 helperText="e.g. Frontend Developer, Project Manager"
+              />
+              <Input
+                label="Hourly Cost (€)"
+                type="text"
+                inputMode="decimal"
+                value={formData.std_cst}
+                onChange={(e) => setFormData({ ...formData, std_cst: e.target.value })}
+                error={formErrors.std_cst}
+                placeholder="0.00"
+                helperText="EUR, up to 2 decimal places"
               />
             </div>
             <div className="flex gap-2">
