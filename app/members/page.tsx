@@ -24,6 +24,11 @@ const initialFormData: MemberFormData = {
 
 type MembersSortKey = "name" | "email" | "role" | "std_cst" | "billing_rate" | "margin" | "created_at";
 
+function formatCurrency(value: number | null): string {
+  if (value === null) return "—";
+  return `€ ${value.toFixed(2).replace(".", ",")}`;
+}
+
 function formatMargin(stdCst: string, billingRate: string): string {
   const cost = stdCst.trim().replace(",", ".");
   const rate = billingRate.trim().replace(",", ".");
@@ -242,8 +247,7 @@ export default function MembersPage() {
     {
       key: "std_cst",
       header: "Hourly Cost",
-      cell: (member) =>
-        member.std_cst !== null ? `€ ${member.std_cst.toFixed(2)}` : "—",
+      cell: (member) => formatCurrency(member.std_cst),
       sortKey: "std_cst",
       align: "right",
       className: "tabular-nums",
@@ -251,8 +255,7 @@ export default function MembersPage() {
     {
       key: "billing_rate",
       header: "Billing Rate",
-      cell: (member) =>
-        member.billing_rate !== null ? `€ ${member.billing_rate.toFixed(2)}` : "—",
+      cell: (member) => formatCurrency(member.billing_rate),
       sortKey: "billing_rate",
       align: "right",
       className: "tabular-nums",
