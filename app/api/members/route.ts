@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 function isMemberInput(body: unknown): body is MemberInput {
   const b = body as Record<string, unknown>;
   const stdCstType = typeof b.std_cst;
+  const billingRateType = typeof b.billing_rate;
   return (
     typeof b === "object" &&
     b !== null &&
@@ -15,15 +16,24 @@ function isMemberInput(body: unknown): body is MemberInput {
     b.email.trim().length > 0 &&
     ("std_cst" in b
       ? stdCstType === "string" || stdCstType === "number" || b.std_cst === null
+      : true) &&
+    ("billing_rate" in b
+      ? billingRateType === "string" || billingRateType === "number" || b.billing_rate === null
       : true)
   );
 }
 
-function parseStdCst(value: string | number | null | undefined): number | null {
+function parseMoney(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined || value === "") return null;
   const parsed = typeof value === "string" ? Number(value.replace(",", ".")) : value;
   if (Number.isNaN(parsed) || parsed < 0) return null;
   return Number(parsed.toFixed(2));
+}
+
+function computeMargin(stdCst: number | null, billingRate: number | null): number | null {
+  if (stdCst === null || billingRate === null || billingRate === 0) return null;
+  const margin = ((billingRate - stdCst) / billingRate) * 100;
+  return Number(margin.toFixed(2));
 }
 
 function validateMember(body: MemberInput): string | null {
@@ -39,6 +49,9 @@ function validateMember(body: MemberInput): string | null {
   }
   if (body.std_cst !== null && body.std_cst !== undefined && body.std_cst < 0) {
     return "Hourly cost cannot be negative.";
+  }
+  if (body.billing_rate !== null && body.billing_rate !== undefined && body.billing_rate < 0) {
+    return "Billing rate cannot be negative.";
   }
   return null;
 }
@@ -81,17 +94,31 @@ export async function POST(request: Request) {
       );
     }
 
-    const stdCst = parseStdCst(body.std_cst);
-    const validationError = validateMember({ ...body, std_cst: stdCst });
+    const stdCst = parseMoney(body.std_cst);
+    const billingRate = parseMoney(body.billing_rate);
+    const margin = computeMargin(stdCst, billingRate);
+    const validationError = validateMember({
+      ...body,
+      std_cst: stdCst,
+      billing_rate: billingRate,
+      margin,
+    });
     if (validationError) {
       return Response.json({ error: validationError }, { status: 400 });
     }
 
     const rows = await query<Member>(
-      `INSERT INTO members (name, email, role, std_cst)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO members (name, email, role, std_cst, billing_rate, margin)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [body.name.trim(), body.email.trim().toLowerCase(), body.role ?? null, stdCst]
+      [
+        body.name.trim(),
+        body.email.trim().toLowerCase(),
+        body.role ?? null,
+        stdCst,
+        billingRate,
+        margin,
+      ]
     );
 
     return Response.json({ data: rows[0] }, { status: 201 });
@@ -126,7 +153,7 @@ export async function PUT(request: Request) {
       typeof b.std_cst === "string" || typeof b.std_cst === "number" || b.std_cst === null
         ? b.std_cst
         : undefined;
-    const stdCst = parseStdCst(stdCstRaw);
+    const stdCst = parseMoney(stdCstRaw);
     if (
       stdCst === null &&
       stdCstRaw !== undefined &&
@@ -136,11 +163,28 @@ export async function PUT(request: Request) {
       return Response.json({ error: "Hourly cost must be a non-negative number." }, { status: 400 });
     }
 
+    const billingRateRaw =
+      typeof b.billing_rate === "string" ||
+      typeof b.billing_rate === "number" ||
+      b.billing_rate === null
+        ? b.billing_rate
+        : undefined;
+    const billingRate = parseMoney(billingRateRaw);
+    if (
+      billingRate === null &&
+      billingRateRaw !== undefined &&
+      billingRateRaw !== null &&
+      billingRateRaw !== ""
+    ) {
+      return Response.json({ error: "Billing rate must be a non-negative number." }, { status: 400 });
+    }
+
     const updates: Partial<Member> = {};
     if (typeof b.name === "string") updates.name = b.name.trim();
     if (typeof b.email === "string") updates.email = b.email.trim().toLowerCase();
     if ("role" in b) updates.role = typeof b.role === "string" ? b.role : null;
     if ("std_cst" in b) updates.std_cst = stdCst;
+    if ("billing_rate" in b) updates.billing_rate = billingRate;
 
     if (updates.name !== undefined && updates.name.trim().length === 0) {
       return Response.json({ error: "Name cannot be empty." }, { status: 400 });
@@ -176,13 +220,28 @@ export async function PUT(request: Request) {
       fields.push(`std_cst = $${fields.length + 1}`);
       values.push(updates.std_cst ?? null);
     }
+    if ("billing_rate" in updates) {
+      fields.push(`billing_rate = $${fields.length + 1}`);
+      values.push(updates.billing_rate ?? null);
+    }
+
+    const currentRows = await query<Member>("SELECT * FROM members WHERE id = $1", [b.id]);
+    if (currentRows.length === 0) {
+      return Response.json({ error: "Member not found." }, { status: 404 });
+    }
+    const current = currentRows[0];
+
+    const margin = computeMargin(
+      "std_cst" in b ? stdCst : current.std_cst,
+      "billing_rate" in b ? billingRate : current.billing_rate
+    );
+    if (margin !== current.margin || "std_cst" in b || "billing_rate" in b) {
+      fields.push(`margin = $${fields.length + 1}`);
+      values.push(margin);
+    }
 
     if (fields.length === 0) {
-      const rows = await query<Member>("SELECT * FROM members WHERE id = $1", [b.id]);
-      if (rows.length === 0) {
-        return Response.json({ error: "Member not found." }, { status: 404 });
-      }
-      return Response.json({ data: rows[0] });
+      return Response.json({ data: current });
     }
 
     values.push(b.id);

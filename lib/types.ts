@@ -4,6 +4,8 @@ export interface Member {
   email: string;
   role: string | null;
   std_cst: number | null;
+  billing_rate: number | null;
+  margin: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -60,6 +62,7 @@ export type MemberFormData = {
   email: string;
   role: string;
   std_cst: string;
+  billing_rate: string;
 };
 
 export type ProjectFormData = {

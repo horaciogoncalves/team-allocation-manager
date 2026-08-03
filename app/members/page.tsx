@@ -19,9 +19,26 @@ const initialFormData: MemberFormData = {
   email: "",
   role: "",
   std_cst: "",
+  billing_rate: "",
 };
 
-type MembersSortKey = "name" | "email" | "role" | "std_cst" | "created_at";
+type MembersSortKey = "name" | "email" | "role" | "std_cst" | "billing_rate" | "margin" | "created_at";
+
+function formatMargin(stdCst: string, billingRate: string): string {
+  const cost = stdCst.trim().replace(",", ".");
+  const rate = billingRate.trim().replace(",", ".");
+  if (!cost || !rate) return "N/A";
+  const costNum = Number(cost);
+  const rateNum = Number(rate);
+  if (Number.isNaN(costNum) || Number.isNaN(rateNum) || rateNum === 0) return "N/A";
+  const margin = ((rateNum - costNum) / rateNum) * 100;
+  return `${margin.toFixed(2).replace(".", ",")}%`;
+}
+
+function formatMarginValue(margin: number | null): string {
+  if (margin === null) return "N/A";
+  return `${margin.toFixed(2).replace(".", ",")}%`;
+}
 
 export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -92,6 +109,15 @@ export default function MembersPage() {
         errors.std_cst = "Use up to 2 decimal places.";
       }
     }
+    if (data.billing_rate.trim()) {
+      const normalized = data.billing_rate.replace(",", ".");
+      const parsed = Number(normalized);
+      if (Number.isNaN(parsed) || parsed < 0) {
+        errors.billing_rate = "Please enter a valid non-negative rate.";
+      } else if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+        errors.billing_rate = "Use up to 2 decimal places.";
+      }
+    }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -132,6 +158,7 @@ export default function MembersPage() {
       email: member.email,
       role: member.role ?? "",
       std_cst: member.std_cst !== null ? member.std_cst.toFixed(2) : "",
+      billing_rate: member.billing_rate !== null ? member.billing_rate.toFixed(2) : "",
     });
     setEditingId(member.id);
     setFormErrors({});
@@ -222,6 +249,23 @@ export default function MembersPage() {
       className: "tabular-nums",
     },
     {
+      key: "billing_rate",
+      header: "Billing Rate",
+      cell: (member) =>
+        member.billing_rate !== null ? `€ ${member.billing_rate.toFixed(2)}` : "—",
+      sortKey: "billing_rate",
+      align: "right",
+      className: "tabular-nums",
+    },
+    {
+      key: "margin",
+      header: "Margin",
+      cell: (member) => formatMarginValue(member.margin),
+      sortKey: "margin",
+      align: "right",
+      className: "tabular-nums",
+    },
+    {
       key: "created_at",
       header: "Created",
       cell: (member) => new Date(member.created_at).toLocaleDateString(),
@@ -263,7 +307,7 @@ export default function MembersPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <Input
                 label="Name"
                 value={formData.name}
@@ -296,6 +340,23 @@ export default function MembersPage() {
                 error={formErrors.std_cst}
                 placeholder="0.00"
                 helperText="EUR, up to 2 decimal places"
+              />
+              <Input
+                label="Billing Rate (€)"
+                type="text"
+                inputMode="decimal"
+                value={formData.billing_rate}
+                onChange={(e) => setFormData({ ...formData, billing_rate: e.target.value })}
+                error={formErrors.billing_rate}
+                placeholder="0.00"
+                helperText="EUR, up to 2 decimal places"
+              />
+              <Input
+                label="Margin"
+                type="text"
+                value={formatMargin(formData.std_cst, formData.billing_rate)}
+                readOnly
+                helperText="Calculated from cost and billing rate"
               />
             </div>
             <div className="flex gap-2">
